@@ -1,63 +1,48 @@
 # DataEngineerChallenge
 
-This is an interview challenge for PayPay. Please feel free to fork. Pull Requests will be ignored.
 
-The challenge is to make make analytical observations about the data using the distributed tools below.
+## Overview
 
-## Processing & Analytical goals:
-
-1. Sessionize the web log by IP. Sessionize = aggregrate all page hits by visitor/IP during a session.
-    https://en.wikipedia.org/wiki/Session_(web_analytics)
-
-2. Determine the average session time
-
-3. Determine unique URL visits per session. To clarify, count a hit to a unique URL only once per session.
-
-4. Find the most engaged users, ie the IPs with the longest session times
-
-## Additional questions for Machine Learning Engineer (MLE) candidates:
-1. Predict the expected load (requests/second) in the next minute
-
-2. Predict the session length for a given IP
-
-3. Predict the number of unique URL visits by a given IP
-
-## Tools allowed (in no particular order):
-- Spark (any language, but prefer Scala or Java)
-- Pig
-- MapReduce (Hadoop 2.x only)
-- Flink
-- Cascading, Cascalog, or Scalding
-
-If you need Hadoop, we suggest 
-HDP Sandbox:
-http://hortonworks.com/hdp/downloads/
-or 
-CDH QuickStart VM:
-http://www.cloudera.com/content/cloudera/en/downloads.html
+This document describes the solution to https://github.com/Pay-Baymax/DataEngineerChallenge.
+This repo will only show the Spark solution.
 
 
-### Additional notes:
-- You are allowed to use whatever libraries/parsers/solutions you can find provided you can explain the functions you are implementing in detail.
-- IP addresses do not guarantee distinct users, but this is the limitation of the data. As a bonus, consider what additional data would help make better analytical conclusions
-- For this dataset, complete the sessionization by time window rather than navigation. Feel free to determine the best session window time on your own, or start with 15 minutes.
-- The log file was taken from an AWS Elastic Load Balancer:
-http://docs.aws.amazon.com/ElasticLoadBalancing/latest/DeveloperGuide/access-log-collection.html#access-log-entry-format
+## Solution
+### Understand the input data
+This is my first step. I need to look into the data to find out the  data size, schema and so on.
+So, what I did is to use **Jupyter** to inspect the input data that I uploaded to the hdfs.
+
+From the inspectation, what I learned:
+- Potential duration of a session can be extremely long. (up to 11 hours)
+- Normal traffic per hour can be around 100k in this data set, with peak traffic around 300k.
+- Most sessions will likely end around 20 minutes. And there are plenty of sessions end after 15 minutes.
+- There are 15 hours in the data.
+
+For this inspectation of the data, please refer to the [inspectation notebook](./doc/Data%20Inspect/Data%20Inspect.md).
+
+### Design Consideration
+
+#### Should I use streaming?
+
+Absolutely, yes. If we only think about the mission, it makes perfect sense to process the traffic data in the streaming application.
+Normally I would set up logstash to stream the access log from AWS to a kafka topic, then build a streaming application to provide the realtime analysis.
+However, given the form of the data is actually a packed file, I assume that the scenario is more of a batched context.
+That's why I chose to use Spark to build a batched application.
 
 
+#### How about the granularity of the batch
 
-## How to complete this challenge:
+Based on the requirement, it would make less sense to calculate the session of the first hour of the day at the beginning of the next day in a daily batch.
+Why don't show it in the next hour with an hourly batch?
+Besides, the timestamp in the data is in UTC, thus introducing a concept of "day" would be very confusing.
 
-1. Fork this repo in github
-2. Complete the processing and analytics as defined first to the best of your ability with the time provided.
-3. Place notes in your code to help with clarity where appropriate. Make it readable enough to present to the PayPay interview team.
-4. Include the test code and data in your solution. 
-5. Complete your work in your own github repo and send the results to us and/or present them during your interview.
+Another thing we can benefit from using a hourly batch is that, we can potentially reduce the cluster cost by using less resource to process hourly data instead of daily data.
 
-## What are we looking for? What does this prove?
+#### How should we deal with the sessions not ended within one hour?
 
-We want to see how you handle:
-- New technologies and frameworks
-- Messy (ie real) data
-- Understanding data transformation
-This is not a pass or fail test, we want to hear about your challenges and your successes with this particular problem.
+Since we need to calculate the sessions in the next hour, and a session can theoretically last forever,
+we need two things:
+- Concat the accesses from last hour that are not in any ended session, with the accesses in the current hour.
+- A limitation for how long at most a session can last.
+
+For the second one, we need it because if some sessions last too long, we will have serious data skew problem.
