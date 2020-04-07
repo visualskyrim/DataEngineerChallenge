@@ -61,3 +61,43 @@ Other that that, we will also output the pending accesses that are not yet being
 #### Traffic is very unstable
 
 Noticed that the traffic changes quite a lot from hour to hour. I'm not sure if this reflects the real traffic trend, but if so, might need to consider dynamic allocation to make job to get required resource easily.
+
+
+## Sessionize Result
+
+### How to run it
+
+First, you need to assembly it by running:
+
+```bash
+sbt assembly
+```
+
+Then from there you can either run it with `spark-submit` on your favorite cluster, or run it locally.
+For running it locally.
+
+Running it on cluster might change depending on you cluster setting, but running locally would be all the same.
+Edit you `src/main/resources/application.conf` like follows:
+```bash
+data {
+  input: "file:///<--path-to-your-repo-->/DataEngineerChallenge/data/2015_07_22_mktplace_shop_web_log_sample.log.gz"
+  sessionized: "file:///<--path-to-your-repo-->/DataEngineerChallenge/data/sessionized"
+  pending: "file:///<--path-to-your-repo-->/DataEngineerChallenge/data/pending"
+
+  error: "file:///<--path-to-your-repo-->/DataEngineerChallenge/data/error"
+}
+
+session {
+  timeout: 1200
+  maxDuration: 21600
+}
+```
+
+Then assembly the binary:
+
+
+```bash
+sbt assembly
+```
+
+And then run spark application locally
