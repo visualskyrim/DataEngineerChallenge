@@ -24,8 +24,8 @@ For this inspectation of the data, please refer to the [inspectation notebook](.
 
 #### Should I use streaming?
 
-Absolutely, yes. If we only think about the mission, it makes perfect sense to process the traffic data in the streaming application.
-Normally I would set up logstash to stream the access log from AWS to a kafka topic, then build a streaming application to provide the realtime analysis.
+Probably, yes. If we only think about the mission, it makes perfect sense to process the traffic data in the streaming application.
+
 However, given the form of the data is actually a packed file, I assume that the scenario is more of a batched context.
 That's why I chose to use Spark to build a batched application.
 
