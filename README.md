@@ -47,6 +47,9 @@ we need two things:
 
 For the second one, we need it because if some sessions last too long, we will have serious data skew problem.
 
+***Since 1.1.0***: I'm no longer union the accesses in the previous hour, but put a only single record per user as the 
+watermark of the uncut session for the next hour. Please refer to [SessionCutWatermark](./src/main/scala/visualskyrim/schema/SessionCutWatermark.scala). 
+
 #### How should the output look like
 
 According to the [Analytical goals](https://github.com/Pay-Baymax/DataEngineerChallenge#processing--analytical-goals),
@@ -65,39 +68,3 @@ Noticed that the traffic changes quite a lot from hour to hour. I'm not sure if 
 
 ## Sessionize Result
 
-### How to run it
-
-First, you need to assembly it by running:
-
-```bash
-sbt assembly
-```
-
-Then from there you can either run it with `spark-submit` on your favorite cluster, or run it locally.
-For running it locally.
-
-Running it on cluster might change depending on you cluster setting, but running locally would be all the same.
-Edit you `src/main/resources/application.conf` like follows:
-```bash
-data {
-  input: "file:///<--path-to-your-repo-->/DataEngineerChallenge/data/2015_07_22_mktplace_shop_web_log_sample.log.gz"
-  sessionized: "file:///<--path-to-your-repo-->/DataEngineerChallenge/data/sessionized"
-  pending: "file:///<--path-to-your-repo-->/DataEngineerChallenge/data/pending"
-
-  error: "file:///<--path-to-your-repo-->/DataEngineerChallenge/data/error"
-}
-
-session {
-  timeout: 1200
-  maxDuration: 21600
-}
-```
-
-Then assembly the binary:
-
-
-```bash
-sbt assembly
-```
-
-And then run spark application locally
