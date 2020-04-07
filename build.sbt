@@ -1,6 +1,6 @@
 
 lazy val versions = new {
-  val sessionize = "1.0.0"
+  val sessionize = "1.1.0"
   val jodaTime = "2.9.3"
   val log4j = "1.2.17"
   val scalatest = "3.0.3"

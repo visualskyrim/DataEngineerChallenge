@@ -2,7 +2,7 @@ package visualskyrim.processes
 
 import org.joda.time.DateTime
 import org.scalatest.FunSuite
-import visualskyrim.schema.Normalized
+import visualskyrim.schema.{Normalized, SessionCutWatermark}
 
 class SessionizerSuite extends FunSuite {
 
@@ -20,9 +20,9 @@ class SessionizerSuite extends FunSuite {
       Normalized(batchTimeInTs + 7 + 20 * 60 + 1, "1.1.1.1:0", "", "url3", "1.1.1.1:0")
     )
 
-    val sessionizedResult = Sessionizer.sessionize(testingSeq, batchTime)
+    val sessionizedResult = Sessionizer.sessionize(testingSeq, SessionCutWatermark(), batchTime)
 
-    assert(sessionizedResult.pending.size === 0)
+    assert(sessionizedResult.watermark === SessionCutWatermark())
     assert(sessionizedResult.sessions.size === 2)
     assert(sessionizedResult.sessions(0).accesses === 4)
     assert(sessionizedResult.sessions(0).duration === 3)
@@ -46,9 +46,9 @@ class SessionizerSuite extends FunSuite {
       Normalized(batchTimeInTs + 7 + 20 * 60 + 1, "1.1.1.1:0", "", "url1", "1.1.1.1:0")
     )
 
-    val sessionizedResult = Sessionizer.sessionize(testingSeq, batchTime)
+    val sessionizedResult = Sessionizer.sessionize(testingSeq, SessionCutWatermark(), batchTime)
 
-    assert(sessionizedResult.pending.size === 0)
+    assert(sessionizedResult.watermark === SessionCutWatermark())
     assert(sessionizedResult.sessions.size === 2)
     assert(sessionizedResult.sessions(0).accesses === 4)
     assert(sessionizedResult.sessions(0).duration === 3)
@@ -70,9 +70,13 @@ class SessionizerSuite extends FunSuite {
       Normalized(batchTimeInTs + 7 + 40 * 60 + 1, "1.1.1.1:0", "", "url1", "1.1.1.1:0")
     )
 
-    val sessionizedResult = Sessionizer.sessionize(testingSeq, batchTime)
+    val sessionizedResult = Sessionizer.sessionize(testingSeq, SessionCutWatermark(), batchTime)
 
-    assert(sessionizedResult.pending.size === 3)
+    assert(sessionizedResult.watermark.currentAccesses === 3)
+    assert(sessionizedResult.watermark.currentDuration === 2)
+    assert(sessionizedResult.watermark.firstAccessTs === batchTimeInTs + 5 + 40 * 60 + 1)
+    assert(sessionizedResult.watermark.lastAccessTs === batchTimeInTs + 7 + 40 * 60 + 1)
+    assert(sessionizedResult.watermark.urls.size === 1)
     assert(sessionizedResult.sessions.size === 1)
     assert(sessionizedResult.sessions(0).accesses === 4)
     assert(sessionizedResult.sessions(0).duration === 3)
@@ -83,14 +87,22 @@ class SessionizerSuite extends FunSuite {
     val batchTime = new DateTime(2020, 4, 6, 0, 0)
     val batchTimeInTs = (batchTime.getMillis / 1000) toInt
 
-    val testingSeq = (1 to 26) map (x => Normalized(batchTimeInTs - 6 * 60 * 60 + x * 15 * 60, "1.1.1.1:0", "", "url1", "1.1.1.1:0"))
+    val testingSeq = (1 to 2) map (x => Normalized(batchTimeInTs + x * 15 * 60, "1.1.1.1:0", "", "url1", "1.1.1.1:0"))
 
 
-    val sessionizedResult = Sessionizer.sessionize(testingSeq, batchTime)
+    val sessionizedResult = Sessionizer.sessionize(
+      testingSeq,
+      SessionCutWatermark(
+        "1.1.1.1:0",
+        batchTimeInTs + 1 * 15 * 60 - 6 * 60 * 60,
+        batchTimeInTs - 1,
+        batchTimeInTs - 1 - (batchTimeInTs + 1 * 15 * 60 - 6 * 60 * 60),
+        30, Set("url1")),
+      batchTime)
 
-    assert(sessionizedResult.pending.size === 0)
+    assert(sessionizedResult.watermark === SessionCutWatermark())
     assert(sessionizedResult.sessions.size === 2)
-    assert(sessionizedResult.sessions(0).accesses === 25)
+    assert(sessionizedResult.sessions(0).accesses === 31)
     assert(sessionizedResult.sessions(0).duration === 6 * 60 * 60)
 
     assert(sessionizedResult.sessions(1).accesses === 1)
@@ -102,15 +114,28 @@ class SessionizerSuite extends FunSuite {
     val batchTime = new DateTime(2020, 4, 6, 0, 0)
     val batchTimeInTs = (batchTime.getMillis / 1000) toInt
 
-    val testingSeq = (1 to 27) map (x => Normalized(batchTimeInTs - 6 * 60 * 60 + x * 15 * 60, "1.1.1.1:0", "", "url1", "1.1.1.1:0"))
+    val testingSeq = (1 to 3) map (x => Normalized(batchTimeInTs + x * 15 * 60, "1.1.1.1:0", "", "url1", "1.1.1.1:0"))
 
 
-    val sessionizedResult = Sessionizer.sessionize(testingSeq, batchTime)
+    val sessionizedResult = Sessionizer.sessionize(
+      testingSeq,
+      SessionCutWatermark(
+        "1.1.1.1:0",
+        batchTimeInTs + 1 * 15 * 60 - 6 * 60 * 60,
+        batchTimeInTs - 1,
+        batchTimeInTs - 1 - (batchTimeInTs + 1 * 15 * 60 - 6 * 60 * 60),
+        30, Set("url1")),
+      batchTime)
 
-    assert(sessionizedResult.pending.size === 2)
     assert(sessionizedResult.sessions.size === 1)
-    assert(sessionizedResult.sessions(0).accesses === 25)
+    assert(sessionizedResult.sessions(0).accesses === 31)
     assert(sessionizedResult.sessions(0).duration === 6 * 60 * 60)
+
+    assert(sessionizedResult.watermark.lastAccessTs === batchTimeInTs + 3 * 15 * 60)
+    assert(sessionizedResult.watermark.firstAccessTs === batchTimeInTs + 2 * 15 * 60)
+    assert(sessionizedResult.watermark.currentDuration === 1 * 15 * 60)
+    assert(sessionizedResult.watermark.currentAccesses === 2)
+    assert(sessionizedResult.watermark.urls === Set("url1"))
   }
 
 

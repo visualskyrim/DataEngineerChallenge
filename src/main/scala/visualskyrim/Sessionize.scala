@@ -1,15 +1,15 @@
 package visualskyrim
 
-import org.apache.spark.sql.{Dataset, Row, SparkSession}
+import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.catalyst.ScalaReflection
 import org.apache.spark.sql.types.StructType
 import scopt.OptionParser
 import visualskyrim.common.{AppConf, DateTimeUtils}
 import visualskyrim.processes.{InputResolver, Sessionizer}
-import visualskyrim.schema.Normalized
+import visualskyrim.schema.{Normalized, SessionCutWatermark}
 
 
-case class SessionizeOptions(hour: String = null)
+case class SessionizeOptions(hour: String = null, firstHour: Boolean = false)
 
 object SessionizeOptions {
 
@@ -21,13 +21,16 @@ object SessionizeOptions {
       .action((arg, option) => option.copy(hour = arg))
       .text("hour in yyyy-MM-ddTHH.")
 
+    opt[Unit]("firstHour").action((arg, option) =>
+      option.copy(firstHour = true)).text("Remove existing output before (re)running.")
+
   }
 }
 
 object Sessionize extends App {
   SessionizeOptions.parser.parse(args, SessionizeOptions()) match {
     case None => throw new RuntimeException("Fail to parse the parameters.")
-    case Some(SessionizeOptions(hour)) =>
+    case Some(SessionizeOptions(hour, firstHour)) =>
 
       implicit val spark: SparkSession = SparkSession.builder()
         .appName(s"Chris Check | $hour")
@@ -46,7 +49,7 @@ object Sessionize extends App {
       val inputDS = InputResolver.resolve(appConf.input, batchHour)
 
 
-      // TODO: re-Partitioning
+      // TODO: re-Partitioning if needed
       val normalizedEitherDS = inputDS.rdd
         .map(row => Normalized(row)).cache() // TODO: choose cache level depending on the infra
 
@@ -54,29 +57,39 @@ object Sessionize extends App {
 
       normalizedEitherDS.filter(x => x.isRight).map(x => x.right.get).toDS().write.text(DateTimeUtils.getHourlyBatchPartition(appConf.error, batchHour))
 
-      val normalizedDS = normalizedEitherDS
+      val normalizedRDD = normalizedEitherDS
         .filter(x => x.isLeft)
         .map(x => x.left.get)
-        .toDS()
+
 
       // Get pending accesses from the previous hour
-      val pendingInputPath = DateTimeUtils.getHourlyBatchPartition(appConf.pending, batchHour.minusHours(1))
+      val watermarkInputPath = DateTimeUtils.getHourlyBatchPartition(appConf.pending, batchHour.minusHours(1))
 
-      val mergedInput: Dataset[Normalized] = if (fs.exists(new org.apache.hadoop.fs.Path(pendingInputPath))) {
-        spark.read.parquet(pendingInputPath).as[Normalized].union(normalizedDS)
+      val pendingRDD = (if (firstHour) {
+        spark.emptyDataset[SessionCutWatermark]
       } else {
-        normalizedDS
+        spark.read.parquet(watermarkInputPath).as[SessionCutWatermark]
+      }).rdd
+
+      val sessionizedDS = normalizedRDD
+        .groupBy(x => x.clientId)
+        .fullOuterJoin(pendingRDD.groupBy(x => x.clientId)) //TODO: Add partitioner if shuffling is worthy
+        .map { case (clientId, (accessesOpt, watermarksOpt)) =>
+
+        val watermark = watermarksOpt match {
+          case Some(watermarks) =>
+            assert(watermarks.size == 1)
+            watermarks.head
+          case None => SessionCutWatermark()
+        }
+
+        Sessionizer.sessionize(accessesOpt.getOrElse(Iterable.empty).toSeq, watermark, batchHour)
       }
-
-
-      val sessionizedDS = mergedInput
-        .groupByKey(x => x.clientId)
-        .mapGroups((clientId, normalizedIter) => Sessionizer.sessionize(normalizedIter.toSeq, batchHour))
 
       sessionizedDS.cache()
 
-      sessionizedDS.flatMap(x => x.sessions).write.parquet(DateTimeUtils.getHourlyBatchPartition(appConf.sessionized, batchHour))
-      sessionizedDS.flatMap(x => x.pending).write.parquet(DateTimeUtils.getHourlyBatchPartition(appConf.pending, batchHour))
-  }
+      sessionizedDS.flatMap(x => x.sessions).toDS().write.parquet(DateTimeUtils.getHourlyBatchPartition(appConf.sessionized, batchHour))
+      sessionizedDS.map(x => x.watermark).filter(x => !x.clientId.isEmpty).toDS().write.parquet(DateTimeUtils.getHourlyBatchPartition(appConf.pending, batchHour))
 
+  }
 }
