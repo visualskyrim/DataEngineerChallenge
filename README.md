@@ -56,4 +56,8 @@ This benefits us with:
 - Easier and faster to calculate duration, session number and average accesses per session, since they are already aggregated at session level.
 - Avoid confusion about "*If a session last for two hours, and then we check the session number for each hour, should this session count as 1 session on each hour?*"
 
-Other that that, we will also output the pending accesses that are not yet being cut into a session. This result will be used as the input for next hour's batch. 
+Other that that, we will also output the pending accesses that are not yet being cut into a session. This result will be used as the input for next hour's batch.
+
+#### Traffic is very unstable
+
+Noticed that the traffic changes quite a lot from hour to hour. I'm not sure if this reflects the real traffic trend, but if so, might need to consider dynamic allocation to make job to get required resource easily.

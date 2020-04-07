@@ -6,7 +6,7 @@ import org.apache.spark.sql.types.StructType
 import scopt.OptionParser
 import visualskyrim.common.{AppConf, DateTimeUtils}
 import visualskyrim.processes.{InputResolver, Sessionizer}
-import visualskyrim.schema.Normalized
+import visualskyrim.schema.{Normalized, SessionCutWatermark}
 
 
 case class SessionizeOptions(hour: String = null)
@@ -46,7 +46,7 @@ object Sessionize extends App {
       val inputDS = InputResolver.resolve(appConf.input, batchHour)
 
 
-      // TODO: re-Partitioning
+      // TODO: re-Partitioning if needed
       val normalizedEitherDS = inputDS.rdd
         .map(row => Normalized(row)).cache() // TODO: choose cache level depending on the infra
 
@@ -60,23 +60,35 @@ object Sessionize extends App {
         .toDS()
 
       // Get pending accesses from the previous hour
-      val pendingInputPath = DateTimeUtils.getHourlyBatchPartition(appConf.pending, batchHour.minusHours(1))
+      val watermarkInputPath = DateTimeUtils.getHourlyBatchPartition(appConf.pending, batchHour.minusHours(1))
 
-      val mergedInput: Dataset[Normalized] = if (fs.exists(new org.apache.hadoop.fs.Path(pendingInputPath))) {
-        spark.read.parquet(pendingInputPath).as[Normalized].union(normalizedDS)
+      val mergedInput: Dataset[SessionCutWatermark] = if (fs.exists(new org.apache.hadoop.fs.Path(watermarkInputPath))) {
+        spark.read.parquet(watermarkInputPath).as[SessionCutWatermark]
       } else {
-        normalizedDS
+        spark.emptyDataset[SessionCutWatermark]
       }
 
-
-      val sessionizedDS = mergedInput
+      val sessionizedDS = normalizedDS
         .groupByKey(x => x.clientId)
-        .mapGroups((clientId, normalizedIter) => Sessionizer.sessionize(normalizedIter.toSeq, batchHour))
+        .cogroup(
+          mergedInput.groupByKey(x => x.clientId)) { (clientId, accessIter, watermarkIter) =>
+
+          val watermark = if (watermarkIter.isEmpty) {
+            SessionCutWatermark()
+          }
+          else {
+            assert(watermarkIter.toSeq.size == 1)
+            watermarkIter.toSeq.head
+          }
+
+          Seq(Sessionizer.sessionize(accessIter.toSeq, watermark, batchHour))
+        }
+
 
       sessionizedDS.cache()
 
       sessionizedDS.flatMap(x => x.sessions).write.parquet(DateTimeUtils.getHourlyBatchPartition(appConf.sessionized, batchHour))
-      sessionizedDS.flatMap(x => x.pending).write.parquet(DateTimeUtils.getHourlyBatchPartition(appConf.pending, batchHour))
+      sessionizedDS.map(x => x.watermark).write.parquet(DateTimeUtils.getHourlyBatchPartition(appConf.pending, batchHour))
   }
 
 }
