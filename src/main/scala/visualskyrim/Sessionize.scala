@@ -55,20 +55,31 @@ object Sessionize extends App {
 
       normalizedEitherDS.count() // Trigger caching
 
-      normalizedEitherDS.filter(x => x.isRight).map(x => x.right.get).toDS().write.text(DateTimeUtils.getHourlyBatchPartition(appConf.error, batchHour))
+
+      // Log parse failure
+      normalizedEitherDS
+        .filter(x => x.isRight)
+        .map(x => x.right.get)
+        .toDS()
+        .write
+        .text(DateTimeUtils.getHourlyBatchPartition(appConf.error, batchHour))
 
       val normalizedRDD = normalizedEitherDS
         .filter(x => x.isLeft)
         .map(x => x.left.get)
-
 
       // Get pending accesses from the previous hour
       val watermarkInputPath = DateTimeUtils.getHourlyBatchPartition(appConf.pending, batchHour.minusHours(1))
 
       val pendingRDD = (if (firstHour) {
         spark.emptyDataset[SessionCutWatermark]
+
       } else {
-        spark.read.parquet(watermarkInputPath).as[SessionCutWatermark]
+        spark
+          .read
+          .parquet(watermarkInputPath)
+          .as[SessionCutWatermark]
+
       }).rdd
 
       val sessionizedDS = normalizedRDD
@@ -88,8 +99,18 @@ object Sessionize extends App {
 
       sessionizedDS.cache()
 
-      sessionizedDS.flatMap(x => x.sessions).toDS().write.parquet(DateTimeUtils.getHourlyBatchPartition(appConf.sessionized, batchHour))
-      sessionizedDS.map(x => x.watermark).filter(x => !x.clientId.isEmpty).toDS().write.parquet(DateTimeUtils.getHourlyBatchPartition(appConf.pending, batchHour))
+      sessionizedDS
+        .flatMap(x => x.sessions)
+        .toDS()
+        .write
+        .parquet(DateTimeUtils.getHourlyBatchPartition(appConf.sessionized, batchHour))
+
+      sessionizedDS
+        .map(x => x.watermark)
+        .filter(x => !x.clientId.isEmpty)
+        .toDS()
+        .write
+        .parquet(DateTimeUtils.getHourlyBatchPartition(appConf.pending, batchHour))
 
   }
 }

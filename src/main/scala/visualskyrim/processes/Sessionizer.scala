@@ -18,10 +18,12 @@ object Sessionizer {
     val sessionization = accesses
       .sortBy(x => x.timestamp)
       .foldLeft(SessionizationWithWatermark(Seq.empty, watermark)) { (currSessionization, access) =>
+
         if (currSessionization.watermark.clientId.isEmpty) { // Initial case
           SessionizationWithWatermark(
             currSessionization.sessions,
             SessionCutWatermark(access.clientId, access.timestamp, access.timestamp, 0, 1, Set(access.url)))
+
         } else {
           val watermark = currSessionization.watermark
 
@@ -33,12 +35,13 @@ object Sessionizer {
               currSessionization.sessions :+ cutSession,
               SessionCutWatermark(access.clientId, access.timestamp, access.timestamp, 0, 1, Set(access.url))
             )
-          } else {
+          } else { // add access to the session and update watermark
             SessionizationWithWatermark(
               currSessionization.sessions,
               SessionCutWatermark(access.clientId, watermark.firstAccessTs, access.timestamp,
                 access.timestamp - watermark.firstAccessTs, watermark.currentAccesses + 1, watermark.urls + access.url)
             )
+
           }
 
           // TODO: Possibly, it is better to add one more cut rule: cut when there are 5000 accesses to further avoid bot-like sessions
@@ -48,8 +51,10 @@ object Sessionizer {
     // Check if the final ongoing session can be cut in this hour
     if (((batchHour.getMillis / 1000).toInt + 60 * 60) - sessionization.watermark.lastAccessTs > SESSION_TIMEOUT) {
       SessionizationResult(sessionization.sessions :+ toSessionized(sessionization.watermark), SessionCutWatermark())
+
     } else {
       SessionizationResult(sessionization.sessions, sessionization.watermark)
+
     }
   }
 
