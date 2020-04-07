@@ -73,7 +73,7 @@ object Sessionize extends App {
 
       val sessionizedDS = normalizedRDD
         .groupBy(x => x.clientId)
-        .fullOuterJoin(pendingRDD.groupBy(x => x.clientId)) //TODO: Add partitioner
+        .fullOuterJoin(pendingRDD.groupBy(x => x.clientId)) //TODO: Add partitioner if shuffling is worthy
         .map { case (clientId, (accessesOpt, watermarksOpt)) =>
 
         val watermark = watermarksOpt match {
@@ -89,7 +89,7 @@ object Sessionize extends App {
       sessionizedDS.cache()
 
       sessionizedDS.flatMap(x => x.sessions).toDS().write.parquet(DateTimeUtils.getHourlyBatchPartition(appConf.sessionized, batchHour))
-      sessionizedDS.map(x => x.watermark).toDS().write.parquet(DateTimeUtils.getHourlyBatchPartition(appConf.pending, batchHour))
-  }
+      sessionizedDS.map(x => x.watermark).filter(x => !x.clientId.isEmpty).toDS().write.parquet(DateTimeUtils.getHourlyBatchPartition(appConf.pending, batchHour))
 
+  }
 }
