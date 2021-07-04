@@ -7,7 +7,16 @@ This document describes the solution to https://github.com/Pay-Baymax/DataEngine
 This repo will only show the Spark solution.
 
 
-## Solution
+## Solution (streaming)
+
+I added a new streaming solution with a few more assumptions to solve this challenge in a realtime context.
+But I believe the batch approach below is a better approach to take given the format and form of the sample data.
+
+The streaming solution is under [realtime](./realtime) folder in this repo with a Flink application code with full explanation of the design and implementation.
+
+
+## Solution (batch)
+
 ### Understand the input data
 This is my first step. I need to look into the data to find out the  data size, schema and so on.
 So, what I did is to use **Jupyter** to inspect the input data that I uploaded to the hdfs.
@@ -47,8 +56,8 @@ we need two things:
 
 For the second one, we need it because if some sessions last too long, we will have serious data skew problem.
 
-***Since 1.1.0***: I'm no longer union the accesses in the previous hour, but put a only single record per user as the 
-watermark of the uncut session for the next hour. Please refer to [SessionCutWatermark](./src/main/scala/visualskyrim/schema/SessionCutWatermark.scala). 
+***Since 1.1.0***: I'm no longer union the accesses in the previous hour, but put a only single record per user as the
+watermark of the uncut session for the next hour. Please refer to [SessionCutWatermark](./src/main/scala/visualskyrim/schema/SessionCutWatermark.scala).
 
 #### How should the output look like
 
@@ -108,7 +117,7 @@ Since the first hour in this data set is `2015-07-22T02`, you should start with 
 
 ```bash
 ./bin/spark-submit --class visualskyrim.Sessionize  target/scala-2.11/sessionize-assembly-1.1.0.jar --hour 2015-07-22T02 --firstHour
-``` 
+```
 
 Then for the rest of the hours:
 ```bash
