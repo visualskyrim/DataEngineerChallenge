@@ -70,7 +70,7 @@ In the Flink process, I use "[Managed Keyed State](https://ci.apache.org/project
 
 Alone with the Keyed State, I use [RichMapFunction](https://ci.apache.org/projects/flink/flink-docs-master/api/java/org/apache/flink/api/common/functions/RichMapFunction.html) for the main process in [SessionizeGroupMapFunction](./src/main/scala/processes/sessionize/SessionizeGroupMapFunction.scala).
 
-![Process Flow](./doc/img/Implementation.png)
+![Process Flow](./doc/img/implementation.png)
 
 > **Why Not Window Function?**
 >
