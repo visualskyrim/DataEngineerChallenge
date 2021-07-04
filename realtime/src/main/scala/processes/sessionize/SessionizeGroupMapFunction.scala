@@ -9,7 +9,7 @@ import schema.{Parsed, Sessionized}
 
 class SessionizeGroupMapFunction extends RichMapFunction[Parsed, Sessionized] {
 
-
+  // cache item: ip -> session state
   private var sessionStates: MapState[String, SessionState] = _
 
   override def map(event: Parsed): Sessionized = {
@@ -27,7 +27,7 @@ class SessionizeGroupMapFunction extends RichMapFunction[Parsed, Sessionized] {
 
       Sessionized(newSessionId, event, 0)
 
-    } else {
+    } else { // On going session
 
       val existingState = this.sessionStates.get(event.ip)
 
@@ -86,6 +86,8 @@ class SessionizeGroupMapFunction extends RichMapFunction[Parsed, Sessionized] {
 
   }
 
+
+  // Define TTL
   override def open(parameters: Configuration): Unit
   = {
     val descriptor = new MapStateDescriptor(SessionState.SESSION_STATE_NAME, classOf[String], classOf[SessionState])
