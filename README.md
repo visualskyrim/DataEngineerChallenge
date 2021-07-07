@@ -10,9 +10,9 @@ This repo will only show the Spark solution.
 ## Solution (streaming)
 
 I added a new streaming solution with a few more assumptions to solve this challenge in a realtime context.
-But I believe the batch approach below is a better approach to take given the format and form of the sample data.
+But I believe the *batch approach below is a better approach to take given the format and form of the sample data*.
 
-The streaming solution is under [realtime](./realtime) folder in this repo with a Flink application code with full explanation of the design and implementation.
+The streaming solution is under [realtime](./realtime) folder in this repo with a **Flink application code** with full explanation of the design and implementation.
 
 
 ## Solution (batch)
